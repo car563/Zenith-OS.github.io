@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zenith OS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .os-bg {
+            transition: background-color 1s ease, background-image 1s ease;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .window {
+            position: absolute;
+            transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
+            will-change: transform, top, left, width, height;
+        }
+        
+        .window.dragging {
+            transition: none;
+            opacity: 0.9;
+        }
+
+        .window-content {
+            height: calc(100% - 40px);
+        }
+
+        /* Custom Scrollbar for Apps */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+    </style>
+</head>
+<body class="bg-black text-slate-800">
+
+    <!-- Boot Screen -->
+    <div id="boot-screen" class="fixed inset-0 bg-black flex flex-col items-center justify-center text-white z-[999999] transition-opacity duration-1000 ease-in-out">
+        <button id="power-btn" class="flex flex-col items-center gap-4 text-gray-500 hover:text-white transition-colors group">
+            <div class="w-16 h-16 rounded-full border-2 border-current flex items-center justify-center group-hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] group-hover:bg-white/5 transition-all">
+                <i class="ph ph-power text-2xl"></i>
+            </div>
+            <span class="font-mono text-sm tracking-widest uppercase">Power On</span>
+        </button>
+
+        <div id="boot-sequence" class="hidden flex-col items-center w-64">
+            <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(59,130,246,0.3)] animate-pulse">
+                <i class="ph-fill ph-planet text-4xl text-white"></i>
+            </div>
+            <h1 class="text-2xl font-light tracking-[0.3em] mb-8">ZENITH<span class="font-bold">OS</span></h1>
+            <div class="w-full h-1 bg-gray-800 rounded-full overflow-hidden mb-4">
+                <div id="boot-progress" class="h-full bg-gradient-to-r from-blue-400 to-purple-500 w-0 transition-all duration-100 ease-linear"></div>
+            </div>
+            <div id="boot-text" class="text-[10px] text-gray-500 font-mono h-4 text-center tracking-widest uppercase">Initializing hardware...</div>
+        </div>
+    </div>
+
+    <!-- Desktop Environment -->
+    <div id="desktop" class="hidden fixed inset-0 os-bg bg-black">
+        <!-- Background Layer (for animated themes) -->
+        <div id="bg-layer" class="absolute inset-0 pointer-events-none z-0"></div>
+        <canvas id="network-canvas" class="absolute inset-0 pointer-events-none z-0 hidden"></canvas>
+
+        <!-- Desktop Icons -->
+        <div id="desktop-icons" class="absolute inset-0 pointer-events-none z-10"></div>
+
+        <!-- Windows Container -->
+        <div id="windows-container" class="absolute inset-0 z-20 pointer-events-none"></div>
+
+        <!-- Start Menu -->
+        <div id="start-menu" class="absolute bottom-20 left-4 w-[340px] bg-slate-800/90 backdrop-blur-xl border-2 border-slate-600 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] p-4 transition-all duration-300 origin-bottom-left z-[9999] scale-95 opacity-0 translate-y-4 pointer-events-none" style="background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 2px, transparent 2px, transparent 4px);">
+            <div class="flex items-center gap-3 mb-6 p-2 rounded-xl bg-black/20 border border-black/40 shadow-inner">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-b from-gray-300 to-gray-500 flex items-center justify-center text-slate-800 font-bold text-lg shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] border border-black/30 overflow-hidden relative">
+                    <div class="absolute top-0 left-0 right-0 h-[50%] bg-gradient-to-b from-white/80 to-white/10 rounded-t-lg pointer-events-none z-10"></div>
+                    <span id="start-menu-user-initial">A</span>
+                </div>
+                <div class="flex-1 overflow-hidden">
+                    <div id="start-menu-user-name" class="text-white font-bold drop-shadow-md truncate">Administrator</div>
+                    <div class="text-white/70 text-xs">Local Account</div>
+                </div>
+            </div>
+            <div class="text-white/50 text-xs font-bold uppercase tracking-wider mb-2 px-2 drop-shadow-md">Applications</div>
+            <div id="start-menu-apps" class="grid grid-cols-4 gap-4 mb-6"></div>
+            <div class="flex justify-between items-center pt-4 border-t border-black/30 shadow-[0_-1px_0_rgba(255,255,255,0.1)] mt-2 px-2">
+                <button onclick="OS.openApp('settings')" class="p-2 text-white/80 hover:text-white hover:bg-black/20 rounded-lg transition-colors flex items-center gap-2 text-sm font-bold">
+                    <i class="ph-fill ph-gear text-lg"></i> Settings
+                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="OS.lock()" class="px-3 py-2 bg-gradient-to-b from-gray-600 to-gray-800 border border-gray-900 shadow-[inset_0_1px_1px_rgba(255,255,255,0.2),0_2px_4px_rgba(0,0,0,0.5)] text-white hover:from-gray-500 hover:to-gray-700 rounded-lg transition-all font-bold flex items-center gap-2 text-sm active:scale-95">
+                        <i class="ph-fill ph-lock-key"></i> Lock
+                    </button>
+                    <button onclick="OS.shutdown()" class="px-3 py-2 bg-gradient-to-b from-red-500 to-red-700 border border-red-900 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_2px_4px_rgba(0,0,0,0.5)] text-white hover:from-red-400 hover:to-red-600 rounded-lg transition-all font-bold flex items-center gap-2 text-sm active:scale-95">
+                        <i class="ph-fill ph-power"></i> Shut Down
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Taskbar -->
+        <div id="taskbar" class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-b from-white/40 via-white/10 to-black/30 backdrop-blur-md border-t border-white/40 shadow-[0_-4px_15px_rgba(0,0,0,0.5)] flex items-center justify-between px-4 z-[9998] transition-transform duration-500 ease-out" style="perspective: 1000px;">
+            <div class="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent transform origin-bottom border-t border-white/50 pointer-events-none" style="transform: rotateX(60deg);"></div>
+            
+            <div class="flex items-center gap-2 relative z-10">
+                <button id="start-btn" class="relative w-12 h-12 rounded-[12px] bg-gradient-to-b from-gray-200 to-gray-500 shadow-[0_4px_8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.8)] flex items-center justify-center border border-black/30 transition-transform active:scale-95 overflow-hidden group">
+                    <div class="absolute top-0 left-0 right-0 h-[50%] bg-gradient-to-b from-white/80 to-white/10 rounded-t-[12px] pointer-events-none z-10"></div>
+                    <i class="ph-fill ph-list text-2xl text-slate-800 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)] z-0 group-hover:scale-110 transition-transform"></i>
+                </button>
+                
+                <div id="taskbar-apps" class="flex gap-3 ml-4 border-l border-white/20 pl-4 h-12 items-center"></div>
+            </div>
+
+            <!-- System Tray -->
+            <div class="flex items-center gap-4 text-white pr-2 relative z-10 font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                <div class="flex items-center gap-3 hover:bg-black/20 px-3 py-2 rounded-lg cursor-pointer transition-colors">
+                    <i class="ph-bold ph-caret-up"></i>
+                    <i id="tray-wifi" class="ph-fill ph-wifi-high drop-shadow-md"></i>
+                    <i id="tray-bt" class="ph-fill ph-bluetooth hidden drop-shadow-md"></i>
+                </div>
+                <div class="flex flex-col items-end justify-center hover:bg-black/20 px-3 py-1 rounded-lg cursor-pointer transition-colors h-12">
+                    <div id="clock-time" class="text-sm">00:00</div>
+                    <div id="clock-date" class="text-[10px] text-white/80">01/01/2024</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Night Shift Overlay -->
+        <div id="night-shift-overlay" class="fixed inset-0 pointer-events-none z-[99998] transition-opacity duration-1000 ease-in-out opacity-0" style="background-color: rgba(255, 140, 0, 0.2); mix-blend-mode: multiply;"></div>
+
+        <!-- Sign-in / Lock Screen -->
+        <div id="login-screen" class="absolute inset-0 z-[99990] hidden flex-col items-center justify-center bg-black/30 backdrop-blur-2xl transition-opacity duration-700 opacity-0">
+            <div class="flex flex-col items-center group mb-10 w-full px-4">
+                <div class="w-32 h-32 rounded-full bg-gradient-to-b from-gray-200 to-gray-500 flex items-center justify-center text-slate-800 font-bold text-6xl shadow-[inset_0_2px_6px_rgba(255,255,255,0.9),0_10px_30px_rgba(0,0,0,0.6)] border border-white/30 mb-6 overflow-hidden relative">
+                    <div class="absolute top-0 left-0 right-0 h-[50%] bg-gradient-to-b from-white/80 to-white/5 pointer-events-none z-10"></div>
+                    <span id="login-user-initial">A</span>
+                </div>
+                <h2 id="login-user-name" class="text-4xl font-semibold text-white mb-8 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] text-center max-w-lg truncate">Administrator</h2>
+                
+                <form id="login-form" class="relative flex items-center transition-all w-full max-w-xs mx-auto">
+                    <input type="password" id="login-password" placeholder="PIN or Password" class="w-full px-6 py-3 rounded-full bg-white/10 border border-white/20 text-white placeholder-white/60 outline-none focus:bg-white/20 focus:border-white/50 focus:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all text-center backdrop-blur-md font-medium text-lg">
+                    <button type="submit" class="absolute right-2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-colors border border-white/10 shadow-sm active:scale-95">
+                        <i class="ph-bold ph-arrow-right text-lg"></i>
+                    </button>
+                </form>
+                
+                <div id="login-spinner" class="hidden mt-8 text-white flex flex-col items-center gap-3">
+                    <i class="ph-bold ph-spinner animate-spin text-4xl drop-shadow-md"></i>
+                    <span class="text-lg font-medium tracking-wide drop-shadow-md">Welcome...</span>
+                </div>
+            </div>
+            
+            <div class="absolute bottom-10 flex gap-6 text-white/70">
+                <button onclick="OS.shutdown()" class="flex flex-col items-center gap-2 hover:text-white transition-colors group">
+                    <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors backdrop-blur-sm border border-white/10">
+                        <i class="ph-fill ph-power text-xl"></i>
+                    </div>
+                    <span class="text-xs font-semibold uppercase tracking-wider">Shut Down</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const BACKGROUNDS = {
+            ios_water: { name: 'Classic iOS', classes: 'bg-black', url: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1920&q=80', animated: false },
+            aurora: { name: 'Aurora', classes: 'bg-slate-950', animated: true, html: '<div class="absolute inset-0 bg-gradient-to-br from-green-400/20 via-purple-500/20 to-blue-500/20 animate-pulse mix-blend-overlay"></div>' },
+            deepspace: { name: 'Deep Space', classes: 'bg-black', animated: false },
+            ocean: { name: 'Ocean Waves', classes: 'bg-blue-950', animated: true, html: '<div class="absolute inset-0 bg-gradient-to-t from-blue-900/50 to-transparent mix-blend-overlay"></div>' },
+            sunset: { name: 'Cyber Sunset', classes: 'bg-indigo-950', animated: true, html: '<div class="absolute inset-0 bg-gradient-to-t from-orange-500/30 via-red-500/20 to-transparent mix-blend-overlay"></div>' },
+            network: { name: 'Neural Network', classes: 'bg-slate-950', animated: true, isCanvas: true },
+            forest: { name: 'Enchanted Forest', classes: 'bg-green-950', animated: true, html: '<div class="absolute inset-0 bg-gradient-to-b from-green-900/30 to-black/40 mix-blend-overlay"></div>' },
+            sky: { name: 'Clear Sky', classes: 'bg-sky-400', animated: true, html: '<div class="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent mix-blend-overlay"></div>' },
+            mountains: { name: 'Misty Mountains', classes: 'bg-slate-900', animated: false },
+            real_nature: { name: 'Real: Yosemite', classes: 'bg-black', url: 'https://images.unsplash.com/photo-1426604966848-d7adac402bff?auto=format&fit=crop&w=1920&q=80', animated: false },
+            custom: { name: 'Custom Upload', classes: 'bg-black', animated: false }
+        };
+
+        const APP_DIRECTORY = {
+            terminal: { id: 'terminal', title: 'Terminal', icon: 'ph-terminal', width: 600, height: 400, color: 'from-gray-700 to-black', iconColor: 'text-white' },
+            calculator: { id: 'calculator', title: 'Calculator', icon: 'ph-calculator', width: 320, height: 480, color: 'from-orange-400 to-orange-600', iconColor: 'text-white' },
+            notepad: { id: 'notepad', title: 'Notepad', icon: 'ph-file-text', width: 500, height: 450, color: 'from-yellow-300 to-yellow-500', iconColor: 'text-yellow-900' },
+            browser: { id: 'browser', title: 'Web Browser', icon: 'ph-globe', width: 800, height: 600, color: 'from-blue-300 to-blue-600', iconColor: 'text-white' },
+            settings: { id: 'settings', title: 'Settings', icon: 'ph-gear', width: 500, height: 500, color: 'from-gray-300 to-gray-500', iconColor: 'text-slate-800' },
+            paint: { id: 'paint', title: 'Paint', icon: 'ph-palette', width: 800, height: 600, color: 'from-purple-400 to-purple-600', iconColor: 'text-white' },
+            snake: { id: 'snake', title: 'Snake', icon: 'ph-game-controller', width: 400, height: 500, color: 'from-green-400 to-green-600', iconColor: 'text-white' },
+            calendar: { id: 'calendar', title: 'Calendar', icon: 'ph-calendar', width: 450, height: 450, color: 'from-red-400 to-red-600', iconColor: 'text-white' },
+            weather: { id: 'weather', title: 'Weather', icon: 'ph-cloud-sun', width: 350, height: 500, color: 'from-cyan-400 to-blue-500', iconColor: 'text-white' },
+            music: { id: 'music', title: 'Music', icon: 'ph-music-notes', width: 400, height: 550, color: 'from-pink-500 to-rose-600', iconColor: 'text-white' },
+            photos: { id: 'photos', title: 'Photos', icon: 'ph-image', width: 600, height: 450, color: 'from-amber-400 to-orange-500', iconColor: 'text-white' },
+            clock: { id: 'clock', title: 'Clock', icon: 'ph-clock', width: 320, height: 350, color: 'from-indigo-400 to-indigo-600', iconColor: 'text-white' },
+            tictactoe: { id: 'tictactoe', title: 'Tic Tac Toe', icon: 'ph-hash', width: 350, height: 450, color: 'from-teal-400 to-teal-600', iconColor: 'text-white' },
+        };
+
+        // --- GLOBAL STATE ---
+        const State = {
+            windows: [],
+            activeWindowId: null,
+            highestZ: 10,
+            isStartOpen: false,
+            username: 'Administrator',
+            bgTheme: 'ios_water',
+            customBgUrl: null,
+            networkColor: '#64b4ff',
+            isWifiEnabled: true,
+            isBluetoothEnabled: false,
+            isNightShiftEnabled: false,
+            iconPositions: {},
+            draggingIcon: null,
+            initialized: false
+        };
+
+        // --- CORE OS MANAGER ---
+        const OS = {
+            init() {
+                if (State.initialized) return;
+                State.initialized = true;
+
+                this.bindEvents();
+                this.calculateIconPositions();
+                this.renderDesktopIcons();
+                this.renderStartMenu();
+                this.updateClock();
+                setInterval(() => this.updateClock(), 1000);
+                this.applyTheme(State.bgTheme);
+
+                // Start Menu Toggle
+                document.getElementById('start-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleStartMenu();
+                });
+                
+                document.getElementById('desktop').addEventListener('click', () => {
+                    if(State.isStartOpen) this.toggleStartMenu();
+                });
+
+                document.getElementById('start-menu').addEventListener('click', (e) => e.stopPropagation());
+            },
+
+            powerOn() {
+                const btn = document.getElementById('power-btn');
+                const seq = document.getElementById('boot-sequence');
+                const progress = document.getElementById('boot-progress');
+                const text = document.getElementById('boot-text');
+                const bootScreen = document.getElementById('boot-screen');
+                const desktop = document.getElementById('desktop');
+
+                // Switch UI to Boot Sequence
+                btn.classList.add('hidden');
+                seq.classList.remove('hidden');
+                seq.classList.add('flex');
+
+                // Initialize OS in the background (hidden underneath boot screen)
+                desktop.classList.remove('hidden');
+                this.init();
+
+                let step = 0;
+                const logs = [
+                    "Loading kernel modules...",
+                    "Mounting virtual filesystems...",
+                    "Initializing Zenith UI daemon...",
+                    "Starting network manager...",
+                    "Ready."
+                ];
+
+                const interval = setInterval(() => {
+                    step += 2;
+                    progress.style.width = `${step}%`;
+
+                    if (step === 20) text.innerText = logs[0];
+                    if (step === 40) text.innerText = logs[1];
+                    if (step === 60) text.innerText = logs[2];
+                    if (step === 80) text.innerText = logs[3];
+                    
+                    if (step >= 100) {
+                        text.innerText = logs[4];
+                        clearInterval(interval);
+                        
+                        // Smooth fade out of the boot screen revealing the desktop underneath
+                        setTimeout(() => {
+                            bootScreen.classList.add('opacity-0');
+                            
+                            setTimeout(() => {
+                                // Hide the boot screen completely from interaction
+                                bootScreen.classList.add('hidden');
+                                bootScreen.classList.remove('opacity-0');
+                                
+                                // Reset boot sequence UI for next power cycle
+                                btn.classList.remove('hidden');
+                                seq.classList.add('hidden');
+                                seq.classList.remove('flex');
+                                progress.style.width = '0%';
+                                text.innerText = 'Initializing hardware...';
+
+                                // Proceed to Sign-in Screen instead of pure desktop
+                                this.showLogin();
+                            }, 1000); // Wait for the duration-1000 transition to finish
+                        }, 300); // Slight pause at 100%
+                    }
+                }, 40); // 40ms * 50 steps = 2 seconds total boot time
+            },
+
+            shutdown() {
+                State.windows.forEach(w => this.closeWindow(w.instanceId));
+                
+                const bootScreen = document.getElementById('boot-screen');
+                const desktop = document.getElementById('desktop');
+                const loginScreen = document.getElementById('login-screen');
+                
+                // Reset Login Screen state if it was open
+                loginScreen.classList.add('hidden', 'opacity-0');
+                
+                // Switch contexts back
+                bootScreen.classList.remove('hidden');
+                desktop.classList.add('hidden');
+                
+                if(State.isStartOpen) this.toggleStartMenu();
+            },
+
+            showLogin() {
+                const loginScreen = document.getElementById('login-screen');
+                const loginForm = document.getElementById('login-form');
+                const loginPass = document.getElementById('login-password');
+                const spinner = document.getElementById('login-spinner');
+                const taskbar = document.getElementById('taskbar');
+
+                // Slide taskbar out of view while locked
+                taskbar.classList.add('translate-y-[150%]');
+
+                // Reset login form visuals
+                loginForm.classList.remove('hidden');
+                spinner.classList.add('hidden');
+                loginPass.value = '';
+
+                // Show the glassmorphism overlay
+                loginScreen.classList.remove('hidden');
+                
+                // Tiny delay to allow display:flex to apply before animating opacity
+                requestAnimationFrame(() => {
+                    loginScreen.classList.remove('opacity-0');
+                    loginPass.focus();
+                });
+
+                loginForm.onsubmit = (e) => {
+                    e.preventDefault();
+                    this.login();
+                };
+            },
+
+            login() {
+                const loginScreen = document.getElementById('login-screen');
+                const loginForm = document.getElementById('login-form');
+                const spinner = document.getElementById('login-spinner');
+                const taskbar = document.getElementById('taskbar');
+
+                // Hide input, show welcome spinner
+                loginForm.classList.add('hidden');
+                spinner.classList.remove('hidden');
+
+                // Simulate secure authentication delay
+                setTimeout(() => {
+                    loginScreen.classList.add('opacity-0');
+                    taskbar.classList.remove('translate-y-[150%]');
+
+                    setTimeout(() => {
+                        loginScreen.classList.add('hidden');
+                    }, 700); // Wait for opacity fade out
+                }, 1000);
+            },
+
+            lock() {
+                if (State.isStartOpen) this.toggleStartMenu();
+                this.showLogin();
+            },
+
+            updateUsername(newName) {
+                State.username = newName.trim() || 'User';
+                const initial = State.username.charAt(0).toUpperCase();
+
+                // Start Menu Updates
+                document.getElementById('start-menu-user-name').innerText = State.username;
+                document.getElementById('start-menu-user-initial').innerText = initial;
+                
+                // Login Screen Updates
+                document.getElementById('login-user-name').innerText = State.username;
+                document.getElementById('login-user-initial').innerText = initial;
+            },
+
+            bindEvents() {
+                window.addEventListener('resize', () => {
+                    this.calculateIconPositions();
+                    this.renderDesktopIcons();
+                    if(NetworkBg.active) NetworkBg.resize();
+                });
+            },
+
+            calculateIconPositions() {
+                const winHeight = window.innerHeight;
+                let x = 20, y = 20;
+                Object.keys(APP_DIRECTORY).forEach((key) => {
+                    if (y + 90 > winHeight - 80) { y = 20; x += 80; }
+                    State.iconPositions[key] = { x, y };
+                    y += 90;
+                });
+            },
+
+            renderDesktopIcons() {
+                const container = document.getElementById('desktop-icons');
+                container.innerHTML = '';
+                
+                Object.values(APP_DIRECTORY).forEach(app => {
+                    const el = document.createElement('div');
+                    const pos = State.iconPositions[app.id];
+                    el.className = 'absolute flex flex-col items-center gap-1 cursor-pointer group w-16 pointer-events-auto select-none';
+                    el.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+                    el.style.zIndex = State.draggingIcon === app.id ? 50 : 10;
+                    
+                    el.innerHTML = `
+                        <div class="relative w-12 h-12 rounded-[10px] bg-gradient-to-b ${app.color} shadow-[0_4px_8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.8)] flex items-center justify-center overflow-hidden border border-black/30 group-hover:scale-105 group-active:scale-95 transition-all">
+                            <div class="absolute top-0 left-0 right-0 h-[50%] bg-gradient-to-b from-white/80 to-white/10 rounded-t-[10px] pointer-events-none z-10"></div>
+                            <i class="ph-fill ${app.icon} text-2xl ${app.iconColor} drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)] z-0"></i>
+                        </div>
+                        <span class="text-white text-[10px] font-bold text-center drop-shadow-[0_2px_2px_rgba(0,0,0,1)] px-1 mt-1 rounded-md">${app.title}</span>
+                    `;
+
+                    // Dragging logic
+                    let isDragging = false, startX, startY, origX, origY;
+                    
+                    el.addEventListener('pointerdown', (e) => {
+                        e.stopPropagation();
+                        isDragging = true;
+                        State.draggingIcon = app.id;
+                        startX = e.clientX; startY = e.clientY;
+                        origX = State.iconPositions[app.id].x;
+                        origY = State.iconPositions[app.id].y;
+                        el.style.zIndex = 50;
+                        el.setPointerCapture(e.pointerId);
+                    });
+
+                    el.addEventListener('pointermove', (e) => {
+                        if (!isDragging) return;
+                        const newX = origX + (e.clientX - startX);
+                        const newY = origY + (e.clientY - startY);
+                        State.iconPositions[app.id] = { x: newX, y: newY };
+                        el.style.transform = `translate(${newX}px, ${newY}px)`;
+                    });
+
+                    el.addEventListener('pointerup', (e) => {
+                        isDragging = false;
+                        State.draggingIcon = null;
+                        el.style.zIndex = 10;
+                        el.releasePointerCapture(e.pointerId);
+                    });
+
+                    el.addEventListener('dblclick', () => this.openApp(app.id));
+                    container.appendChild(el);
+                });
+            },
+
+            renderStartMenu() {
+                const container = document.getElementById('start-menu-apps');
+                container.innerHTML = Object.values(APP_DIRECTORY).map(app => `
+                    <button onclick="OS.openApp('${app.id}')" class="flex flex-col items-center gap-1 transition-transform hover:scale-110 active:scale-95">
+                        <div class="relative w-12 h-12 rounded-[10px] bg-gradient-to-b ${app.color} shadow-[0_4px_6px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.8)] flex items-center justify-center overflow-hidden border border-black/30">
+                            <div class="absolute top-0 left-0 right-0 h-[50%] bg-gradient-to-b from-white/80 to-white/10 rounded-t-[10px] pointer-events-none z-10"></div>
+                            <i class="ph-fill ${app.icon} text-[22px] ${app.iconColor} drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)] z-0"></i>
+                        </div>
+                        <span class="text-white text-[10px] font-bold text-center w-full truncate drop-shadow-md">${app.title}</span>
+                    </button>
+                `).join('');
+            },
+
+            toggleStartMenu() {
+                State.isStartOpen = !State.isStartOpen;
+                const menu = document.getElementById('start-menu');
+                const btn = document.getElementById('start-btn');
+                if (State.isStartOpen) {
+                    menu.classList.remove('scale-95', 'opacity-0', 'translate-y-4', 'pointer-events-none');
+                    menu.classList.add('scale-100', 'opacity-100', 'translate-y-0');
+                    btn.classList.add('ring-2', 'ring-blue-400');
+                } else {
+                    menu.classList.add('scale-95', 'opacity-0', 'translate-y-4', 'pointer-events-none');
+                    menu.classList.remove('scale-100', 'opacity-100', 'translate-y-0');
+                    btn.classList.remove('ring-2', 'ring-blue-400');
+                }
+            },
+
+            updateClock() {
+                const now = new Date();
+                document.getElementById('clock-time').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('clock-date').textContent = now.toLocaleDateString();
+            },
+
+            applyTheme(themeKey) {
+                State.bgTheme = themeKey;
+                const theme = BACKGROUNDS[themeKey];
+                const desktop = document.getElementById('desktop');
+                const layer = document.getElementById('bg-layer');
+                const canvas = document.getElementById('network-canvas');
+
+                // Preserve hidden state so we don't accidentally hide the active desktop
+                const isHidden = desktop.classList.contains('hidden');
+
+                // Reset and apply new classes
+                desktop.className = `fixed inset-0 os-bg ${theme.classes || 'bg-black'}`;
+                if (isHidden) {
+                    desktop.classList.add('hidden');
+                }
+                
+                desktop.style.backgroundImage = '';
+                layer.innerHTML = '';
+                canvas.classList.add('hidden');
+                NetworkBg.stop();
+
+                if (themeKey === 'custom' && State.customBgUrl) {
+                    desktop.style.backgroundImage = `url(${State.customBgUrl})`;
+                } else if (theme.url) {
+                    desktop.style.backgroundImage = `url(${theme.url})`;
+                } else if (theme.html) {
+                    layer.innerHTML = theme.html;
+                } else if (theme.isCanvas) {
+                    canvas.classList.remove('hidden');
+                    NetworkBg.start(State.networkColor);
+                }
+            },
+
+            updateHardwareIcons() {
+                document.getElementById('tray-wifi').classList.toggle('hidden', !State.isWifiEnabled);
+                document.getElementById('tray-bt').classList.toggle('hidden', !State.isBluetoothEnabled);
+                document.getElementById('night-shift-overlay').style.opacity = State.isNightShiftEnabled ? 1 : 0;
+            },
+
+            // --- WINDOW MANAGEMENT ---
+            openApp(appId) {
+                const appDef = APP_DIRECTORY[appId];
+                if (!appDef) return;
+                
+                const instanceId = `${appId}-${Date.now()}`;
+                State.highestZ++;
+                
+                const win = {
+                    ...appDef,
+                    instanceId,
+                    zIndex: State.highestZ,
+                    isMaximized: false,
+                    x: Math.max(0, (window.innerWidth - appDef.width) / 2 + (Math.random() * 40 - 20)),
+                    y: Math.max(0, (window.innerHeight - appDef.height) / 2 + (Math.random() * 40 - 20))
+                };
+                
+                State.windows.push(win);
+                this.renderWindow(win);
+                this.focusWindow(instanceId);
+                if (State.isStartOpen) this.toggleStartMenu();
+                this.updateTaskbar();
+            },
+
+            renderWindow(win) {
+                const container = document.getElementById('windows-container');
+                const el = document.createElement('div');
+                el.id = `win-${win.instanceId}`;
+                el.className = `window flex flex-col rounded-xl overflow-hidden bg-gray-100 border border-black/40 shadow-lg pointer-events-auto`;
+                el.style.width = `${win.width}px`;
+                el.style.height = `${win.height}px`;
+                el.style.top = `${win.y}px`;
+                el.style.left = `${win.x}px`;
+                el.style.zIndex = win.zIndex;
+
+                el.innerHTML = `
+                    <div class="window-header h-10 flex items-center justify-between px-3 select-none bg-gradient-to-b from-[#f4f5f7] via-[#d6dae0] to-[#b3b9c4] border-b border-[#8a92a3]">
+                        <div class="flex items-center gap-2 pointer-events-none">
+                            <i class="ph-fill ${win.icon} text-slate-500"></i>
+                            <span class="text-sm font-bold text-slate-500 drop-shadow-[0_1px_0_rgba(255,255,255,0.4)]">${win.title}</span>
+                        </div>
+                        <div class="flex items-center gap-2 pointer-events-auto">
+                            <button onclick="OS.maximizeWindow('${win.instanceId}')" class="w-4 h-4 rounded-full bg-gradient-to-b from-green-300 to-green-600 border border-green-800 shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),0_1px_1px_rgba(0,0,0,0.2)] flex items-center justify-center text-green-900 active:scale-95">
+                                <i class="ph-bold ph-corners-out text-[10px]"></i>
+                            </button>
+                            <button onclick="OS.closeWindow('${win.instanceId}')" class="w-4 h-4 rounded-full bg-gradient-to-b from-red-400 to-red-700 border border-red-900 shadow-[inset_0_1px_2px_rgba(255,255,255,0.8),0_1px_1px_rgba(0,0,0,0.2)] flex items-center justify-center text-red-900 active:scale-95">
+                                <i class="ph-bold ph-x text-[10px]"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="window-content relative overflow-hidden bg-white/80" id="content-${win.instanceId}"></div>
+                `;
+
+                container.appendChild(el);
+                
+                // Attach Dragging Logic
+                const header = el.querySelector('.window-header');
+                let isDragging = false, startX, startY, origX, origY;
+
+                header.addEventListener('pointerdown', (e) => {
+                    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+                    const wData = State.windows.find(w => w.instanceId === win.instanceId);
+                    if (wData.isMaximized) return;
+                    
+                    this.focusWindow(win.instanceId);
+                    isDragging = true;
+                    startX = e.clientX; startY = e.clientY;
+                    origX = wData.x; origY = wData.y;
+                    el.classList.add('dragging');
+                    header.setPointerCapture(e.pointerId);
+                });
+
+                header.addEventListener('pointermove', (e) => {
+                    if (!isDragging) return;
+                    const newX = origX + (e.clientX - startX);
+                    const newY = Math.max(0, origY + (e.clientY - startY));
+                    const wData = State.windows.find(w => w.instanceId === win.instanceId);
+                    wData.x = newX; wData.y = newY;
+                    el.style.left = `${newX}px`;
+                    el.style.top = `${newY}px`;
+                });
+
+                header.addEventListener('pointerup', (e) => {
+                    isDragging = false;
+                    el.classList.remove('dragging');
+                    header.releasePointerCapture(e.pointerId);
+                });
+
+                el.addEventListener('mousedown', () => this.focusWindow(win.instanceId));
+
+                // Initialize App Content
+                AppImpls[win.id](document.getElementById(`content-${win.instanceId}`), win.instanceId);
+            },
+
+            closeWindow(id) {
+                State.windows = State.windows.filter(w => w.instanceId !== id);
+                const el = document.getElementById(`win-${id}`);
+                if (el) el.remove();
+                if (State.activeWindowId === id) {
+                    State.activeWindowId = State.windows.length ? State.windows[State.windows.length-1].instanceId : null;
+                    if(State.activeWindowId) this.focusWindow(State.activeWindowId);
+                }
+                this.updateTaskbar();
+            },
+
+            focusWindow(id) {
+                State.activeWindowId = id;
+                State.highestZ++;
+                
+                State.windows.forEach(w => {
+                    const el = document.getElementById(`win-${w.instanceId}`);
+                    if (!el) return;
+                    const header = el.querySelector('.window-header');
+                    const title = header.querySelector('span');
+                    const icon = header.querySelector('i');
+
+                    if (w.instanceId === id) {
+                        w.zIndex = State.highestZ;
+                        el.style.zIndex = w.zIndex;
+                        el.classList.add('shadow-[0_20px_40px_rgba(0,0,0,0.6)]', 'ring-1', 'ring-white/30');
+                        el.classList.remove('grayscale-[20%]', 'shadow-lg');
+                        header.className = 'window-header h-10 flex items-center justify-between px-3 select-none bg-gradient-to-b from-[#e8ebf2] via-[#bfc7d5] to-[#8d9ab1] border-b border-[#5a667d]';
+                        title.className = 'text-sm font-bold text-slate-800 drop-shadow-[0_1px_0_rgba(255,255,255,0.6)]';
+                        icon.classList.remove('text-slate-500'); icon.classList.add('text-slate-800');
+                    } else {
+                        el.classList.remove('shadow-[0_20px_40px_rgba(0,0,0,0.6)]', 'ring-1', 'ring-white/30');
+                        el.classList.add('grayscale-[20%]', 'shadow-lg');
+                        header.className = 'window-header h-10 flex items-center justify-between px-3 select-none bg-gradient-to-b from-[#f4f5f7] via-[#d6dae0] to-[#b3b9c4] border-b border-[#8a92a3]';
+                        title.className = 'text-sm font-bold text-slate-500 drop-shadow-[0_1px_0_rgba(255,255,255,0.4)]';
+                        icon.classList.add('text-slate-500'); icon.classList.remove('text-slate-800');
+                    }
+                });
+                this.updateTaskbar();
+            },
+
+            maximizeWindow(id) {
+                const win = State.windows.find(w => w.instanceId === id);
+                if (!win) return;
+                win.isMaximized = !win.isMaximized;
+                const el = document.getElementById(`win-${id}`);
+                const btnIcon = el.querySelector('.window-header button i');
+
+                if (win.isMaximized) {
+                    el.style.top = '0px';
+                    el.style.left = '0px';
+                    el.style.width = '100%';
+                    el.style.height = 'calc(100% - 4rem)'; // Leave room for taskbar
+                    btnIcon.className = 'ph-bold ph-minus text-[10px]';
+                } else {
+                    el.style.top = `${win.y}px`;
+                    el.style.left = `${win.x}px`;
+                    el.style.width = `${win.width}px`;
+                    el.style.height = `${win.height}px`;
+                    btnIcon.className = 'ph-bold ph-corners-out text-[10px]';
+                }
+            },
+
+            updateTaskbar() {
+                const container = document.getElementById('taskbar-apps');
+                container.innerHTML = State.windows.map(win => `
+                    <button onclick="OS.focusWindow('${win.instanceId}')" class="relative w-12 h-12 rounded-[12px] bg-gradient-to-b ${win.color} shadow-[0_4px_8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.8)] flex items-center justify-center overflow-hidden border border-black/30 hover:scale-105 active:scale-95 transition-all ${State.activeWindowId === win.instanceId ? 'ring-2 ring-white scale-105 opacity-100' : 'opacity-80'}" title="${win.title}">
+                        <div class="absolute top-0 left-0 right-0 h-[50%] bg-gradient-to-b from-white/80 to-white/10 rounded-t-[12px] pointer-events-none z-10"></div>
+                        <i class="ph-fill ${win.icon} text-[22px] ${win.iconColor} drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)] z-0"></i>
+                    </button>
+                `).join('');
+            }
+        };
+
+        // --- NETWORK BACKGROUND CANVAS ---
+        const NetworkBg = {
+            active: false,
+            ctx: null,
+            canvas: null,
+            particles: [],
+            num: 120,
+            color: '100,180,255',
+            mouse: {x: null, y: null},
+            animId: null,
+
+            hexToRgb(hex) {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '100, 180, 255';
+            },
+
+            start(colorHex) {
+                this.active = true;
+                this.canvas = document.getElementById('network-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.color = this.hexToRgb(colorHex);
+                this.resize();
+                this.particles = Array.from({length: this.num}, () => ({
+                    x: Math.random() * this.canvas.width,
+                    y: Math.random() * this.canvas.height,
+                    vx: (Math.random() - 0.5) * 1.5,
+                    vy: (Math.random() - 0.5) * 1.5,
+                    r: Math.random() * 1.5 + 1
+                }));
+
+                window.addEventListener('mousemove', this.onMove);
+                window.addEventListener('mouseout', this.onOut);
+                this.animate();
+            },
+
+            stop() {
+                this.active = false;
+                if (this.animId) cancelAnimationFrame(this.animId);
+                window.removeEventListener('mousemove', this.onMove);
+                window.removeEventListener('mouseout', this.onOut);
+            },
+
+            resize() {
+                if(!this.canvas) return;
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+            },
+
+            onMove: (e) => { NetworkBg.mouse.x = e.clientX; NetworkBg.mouse.y = e.clientY; },
+            onOut: () => { NetworkBg.mouse.x = null; NetworkBg.mouse.y = null; },
+
+            animate() {
+                if(!NetworkBg.active) return;
+                const { ctx, canvas, particles, color, mouse } = NetworkBg;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                for (let i = 0; i < particles.length; i++) {
+                    let p = particles[i];
+                    if (p.x > canvas.width || p.x < 0) p.vx = -p.vx;
+                    if (p.y > canvas.height || p.y < 0) p.vy = -p.vy;
+                    p.x += p.vx; p.y += p.vy;
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${color}, 0.7)`;
+                    ctx.fill();
+
+                    for (let j = i; j < particles.length; j++) {
+                        let p2 = particles[j];
+                        let dx = p.x - p2.x, dy = p.y - p2.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < 120) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = `rgba(${color}, ${0.2 - dist/600})`;
+                            ctx.lineWidth = 1;
+                            ctx.moveTo(p.x, p.y);
+                            ctx.lineTo(p2.x, p2.y);
+                            ctx.stroke();
+                        }
+                    }
+
+                    if (mouse.x !== null) {
+                        let dx = p.x - mouse.x, dy = p.y - mouse.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < 180) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = `rgba(${color}, ${0.6 - dist/300})`;
+                            ctx.lineWidth = 1.5;
+                            ctx.moveTo(p.x, p.y);
+                            ctx.lineTo(mouse.x, mouse.y);
+                            ctx.stroke();
+                        }
+                    }
+                }
+                NetworkBg.animId = requestAnimationFrame(NetworkBg.animate);
+            }
+        };
+
+        // --- APP IMPLEMENTATIONS ---
+        const AppImpls = {
+            terminal(container) {
+                let history = ['Zenith OS [Version 1.0.0]', '(c) Zenith Corporation. All rights reserved.', '', 'Type "help" to see available commands.'];
+                
+                const render = () => {
+                    container.innerHTML = `
+                        <div class="w-full h-full bg-gray-950 text-green-400 font-mono p-2 overflow-y-auto text-sm cursor-text flex flex-col" id="term-container-${container.id}">
+                            <div id="term-hist-${container.id}">
+                                ${history.map(l => `<div class="whitespace-pre-wrap min-h-[1.2em]">${l}</div>`).join('')}
+                            </div>
+                            <div class="flex mt-1">
+                                <span class="mr-2">C:\\Users\\Root&gt;</span>
+                                <input type="text" id="term-in-${container.id}" class="flex-1 bg-transparent outline-none border-none text-green-400" autocomplete="off" spellcheck="false" autofocus>
+                            </div>
+                        </div>
+                    `;
+                    
+                    const input = container.querySelector(`#term-in-${container.id}`);
+                    const scrollArea = container.querySelector(`#term-container-${container.id}`);
+                    
+                    scrollArea.onclick = () => input.focus();
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            const cmd = input.value.trim();
+                            const cmdLow = cmd.toLowerCase();
+                            let out = '';
+                            
+                            switch(cmdLow) {
+                                case 'help': out = 'Available commands: help, clear, date, whoami, echo [text], matrix'; break;
+                                case 'clear': history = []; render(); return;
+                                case 'date': out = new Date().toString(); break;
+                                case 'whoami': out = State.username; break;
+                                case 'matrix': out = 'Wake up, Neo...'; break;
+                                case '': break;
+                                default: 
+                                    if(cmdLow.startsWith('echo ')) out = cmd.substring(5);
+                                    else out = `Command not found: ${cmd}`;
+                            }
+                            
+                            if(cmd) history.push(`C:\\Users\\Root> ${cmd}`);
+                            if(out) history.push(out);
+                            render();
+                        }
+                    });
+                    scrollArea.scrollTop = scrollArea.scrollHeight;
+                    input.focus();
+                };
+                render();
+            },
+
+            calculator(container) {
+                let disp = '0', eq = '';
+                const btns = ['C','(',')','/','7','8','9','*','4','5','6','-','1','2','3','+','0','.','='];
+                
+                const render = () => {
+                    container.innerHTML = `
+                        <div class="w-full h-full bg-gray-100 flex flex-col p-4 overflow-y-auto min-h-[300px]">
+                            <div class="bg-white p-4 rounded-xl shadow-inner mb-4 flex-col flex items-end justify-end h-24 border border-gray-200 shrink-0">
+                                <div class="text-gray-500 text-sm h-5">${eq}</div>
+                                <div class="text-4xl font-light text-gray-800 overflow-hidden break-all">${disp}</div>
+                            </div>
+                            <div class="grid grid-cols-4 gap-2 flex-1 min-h-[250px]" id="calc-grid-${container.id}">
+                            </div>
+                        </div>
+                    `;
+                    
+                    const grid = container.querySelector(`#calc-grid-${container.id}`);
+                    btns.forEach(b => {
+                        const btnEl = document.createElement('button');
+                        let cls = 'rounded-xl text-lg font-medium transition-colors hover:bg-gray-200 active:bg-gray-300 ';
+                        if (b === '=') cls += 'col-span-2 bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700';
+                        else if (['/','*','-','+'].includes(b)) cls += 'bg-indigo-100 text-indigo-600';
+                        else cls += 'bg-white shadow-sm';
+                        
+                        btnEl.className = cls;
+                        btnEl.innerText = b;
+                        btnEl.onclick = () => {
+                            if(b==='C') { disp='0'; eq=''; }
+                            else if(b==='=') {
+                                try { disp = String(new Function('return ' + eq + disp)()); eq=''; } 
+                                catch(e) { disp='Error'; }
+                            }
+                            else if(['+','-','*','/'].includes(b)) {
+                                eq = disp + ' ' + b + ' '; disp='0';
+                            }
+                            else {
+                                disp = disp === '0' ? b : disp + b;
+                            }
+                            render();
+                        };
+                        grid.appendChild(btnEl);
+                    });
+                };
+                render();
+            },
+
+            notepad(container) {
+                container.innerHTML = `
+                    <div class="w-full h-full flex flex-col bg-white">
+                        <div class="flex gap-4 border-b px-2 py-1 bg-gray-50 text-xs text-gray-600">
+                            <span class="hover:bg-gray-200 px-2 py-1 rounded cursor-pointer">File</span>
+                            <span class="hover:bg-gray-200 px-2 py-1 rounded cursor-pointer">Edit</span>
+                            <span class="hover:bg-gray-200 px-2 py-1 rounded cursor-pointer">View</span>
+                        </div>
+                        <textarea class="flex-1 w-full p-2 outline-none resize-none font-sans text-gray-800 overflow-y-auto" placeholder="Type something here..." spellcheck="false"></textarea>
+                    </div>
+                `;
+            },
+
+            browser(container) {
+                let url = 'https://en.wikipedia.org/wiki/Special:Search?search=Google';
+                
+                const render = () => {
+                    container.innerHTML = `
+                        <div class="w-full h-full flex flex-col bg-white overflow-hidden">
+                            <div class="flex items-center gap-2 border-b px-3 py-2 bg-gray-100 shrink-0">
+                                <form id="form-${container.id}" class="flex-1 flex items-center bg-white px-3 py-1 rounded-full border text-sm text-gray-600 shadow-sm">
+                                    <i class="ph-fill ph-globe text-gray-400 mr-2"></i>
+                                    <input type="text" id="input-${container.id}" value="${url}" class="flex-1 outline-none bg-transparent" placeholder="Type a URL or search...">
+                                </form>
+                            </div>
+                            <div class="flex-1 bg-white relative">
+                                <iframe id="frame-${container.id}" src="${url}" class="absolute inset-0 w-full h-full border-none bg-white" sandbox="allow-same-origin allow-scripts allow-forms"></iframe>
+                            </div>
+                        </div>
+                    `;
+                    
+                    container.querySelector(`#form-${container.id}`).onsubmit = (e) => {
+                        e.preventDefault();
+                        let target = container.querySelector(`#input-${container.id}`).value.trim();
+                        if (!target.includes('.') && !target.startsWith('http')) {
+                            target = `https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(target)}`;
+                        } else if (!target.startsWith('http')) {
+                            target = 'https://' + target;
+                        }
+                        url = target;
+                        render();
+                    };
+                };
+                render();
+            },
+
+            settings(container) {
+                const render = () => {
+                    const toggleHTML = (isOn, action) => `
+                        <div onclick="${action}" class="w-12 h-6 rounded-full flex items-center p-1 cursor-pointer transition-all duration-300 shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)] border ${isOn ? 'bg-gradient-to-b from-blue-400 to-blue-600 justify-end border-blue-700' : 'bg-gradient-to-b from-gray-200 to-gray-400 justify-start border-gray-500'}">
+                            <div class="w-5 h-5 bg-gradient-to-b from-white to-gray-100 rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.6)] border border-gray-300"></div>
+                        </div>
+                    `;
+
+                    let bgButtons = Object.entries(BACKGROUNDS).filter(([k]) => k!=='custom').map(([k, bg]) => `
+                        <button onclick="OS.applyTheme('${k}'); AppImpls.settings(document.getElementById('${container.id}'))" class="flex items-center justify-between p-3 rounded-xl border text-sm transition-all shadow-sm ${State.bgTheme === k ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-gray-50'}">
+                            <span class="font-medium">${bg.name}</span>
+                            ${State.bgTheme === k ? '<div class="w-3 h-3 bg-blue-500 rounded-full"></div>' : ''}
+                        </button>
+                    `).join('');
+
+                    container.innerHTML = `
+                        <div class="w-full h-full flex flex-col bg-gray-50 text-gray-800 overflow-y-auto">
+                            <div class="p-6">
+                                <h2 class="text-2xl font-bold mb-6 text-gray-800 drop-shadow-[0_1px_1px_rgba(255,255,255,1)]">System Settings</h2>
+                                
+                                <div class="mb-8">
+                                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2 shadow-sm">Account</h3>
+                                    <div class="bg-white rounded-xl border border-gray-300 shadow-[0_1px_3px_rgba(0,0,0,0.1)] p-4">
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                                        <input type="text" id="setting-username-${container.id}" value="${State.username}" placeholder="Enter new username..." class="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm">
+                                    </div>
+                                </div>
+
+                                <div class="mb-8">
+                                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2 shadow-sm">Network</h3>
+                                    <div class="bg-white rounded-xl border border-gray-300 shadow-[0_1px_3px_rgba(0,0,0,0.1)] text-sm overflow-hidden">
+                                        <div class="flex justify-between items-center p-3">
+                                            <span class="font-bold text-gray-700">Wi-Fi</span>
+                                            ${toggleHTML(State.isWifiEnabled, `State.isWifiEnabled=!State.isWifiEnabled; OS.updateHardwareIcons(); AppImpls.settings(document.getElementById('${container.id}'))`)}
+                                        </div>
+                                        <div class="flex justify-between items-center p-3 border-t border-gray-200 bg-gray-50/50">
+                                            <span class="text-gray-600">Network Name</span>
+                                            <span class="font-medium ${State.isWifiEnabled ? 'text-blue-500' : 'text-gray-400'}">${State.isWifiEnabled ? 'Zenith_Net' : 'Not Connected'}</span>
+                                        </div>
+                                        <div class="flex justify-between items-center p-3 border-t border-gray-200">
+                                            <span class="font-bold text-gray-700">Bluetooth</span>
+                                            ${toggleHTML(State.isBluetoothEnabled, `State.isBluetoothEnabled=!State.isBluetoothEnabled; OS.updateHardwareIcons(); AppImpls.settings(document.getElementById('${container.id}'))`)}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8">
+                                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2 shadow-sm">Display</h3>
+                                    <div class="bg-white rounded-xl border border-gray-300 shadow-[0_1px_3px_rgba(0,0,0,0.1)] text-sm overflow-hidden">
+                                        <div class="flex justify-between items-center p-3">
+                                            <span class="font-bold text-gray-700">Night Shift</span>
+                                            ${toggleHTML(State.isNightShiftEnabled, `State.isNightShiftEnabled=!State.isNightShiftEnabled; OS.updateHardwareIcons(); AppImpls.settings(document.getElementById('${container.id}'))`)}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8">
+                                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2 shadow-sm">Background Theme</h3>
+                                    
+                                    ${State.bgTheme === 'network' ? `
+                                        <div class="mb-4 bg-white p-4 rounded-xl border border-gray-300 shadow-[0_1px_3px_rgba(0,0,0,0.1)] flex justify-between items-center">
+                                            <span class="text-sm font-medium text-gray-700">Network Color</span>
+                                            <input type="color" id="net-col-${container.id}" value="${State.networkColor}" class="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent">
+                                        </div>
+                                    ` : ''}
+
+                                    <div class="mb-4 bg-white p-4 rounded-xl border border-gray-300 shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
+                                        <label class="flex items-center gap-3 cursor-pointer text-sm">
+                                            <div class="w-8 h-8 rounded-lg bg-gray-100 border border-gray-300 flex items-center justify-center text-gray-500 shadow-sm"><i class="ph-bold ph-image"></i></div>
+                                            <span class="font-medium flex-1">Upload Custom Background</span>
+                                            <input type="file" accept="image/*" id="bg-upload-${container.id}" class="hidden">
+                                        </label>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-3">${bgButtons}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    // Username changing logic
+                    const userInp = container.querySelector(`#setting-username-${container.id}`);
+                    if (userInp) {
+                        userInp.addEventListener('input', (e) => {
+                            OS.updateUsername(e.target.value);
+                        });
+                    }
+
+                    // Background uploading logic
+                    const uploadInput = container.querySelector(`#bg-upload-${container.id}`);
+                    if(uploadInput) uploadInput.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if(file) {
+                            State.customBgUrl = URL.createObjectURL(file);
+                            OS.applyTheme('custom');
+                            render();
+                        }
+                    };
+
+                    const colorInput = container.querySelector(`#net-col-${container.id}`);
+                    if(colorInput) colorInput.onchange = (e) => {
+                        State.networkColor = e.target.value;
+                        if(State.bgTheme === 'network') OS.applyTheme('network');
+                    };
+                };
+                render();
+            },
+
+            paint(container) {
+                container.innerHTML = `
+                    <div class="w-full h-full flex flex-col bg-slate-100 overflow-hidden">
+                        <div class="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-4 shrink-0 shadow-sm z-10">
+                            <input type="color" id="p-col-${container.id}" value="#000000" class="w-8 h-8 rounded cursor-pointer border-none p-0">
+                            <div class="flex items-center gap-2 text-sm text-slate-600 font-medium">
+                                Size <input type="range" id="p-size-${container.id}" min="1" max="30" value="5" class="w-24 accent-slate-600">
+                            </div>
+                            <button id="p-clear-${container.id}" class="px-4 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 active:bg-slate-300 text-sm font-bold ml-auto transition-colors">Clear</button>
+                        </div>
+                        <div class="flex-1 relative bg-white" id="p-wrap-${container.id}">
+                            <canvas id="p-canv-${container.id}" class="absolute inset-0 cursor-crosshair touch-none"></canvas>
+                        </div>
+                    </div>
+                `;
+
+                const canvas = container.querySelector(`#p-canv-${container.id}`);
+                const wrap = container.querySelector(`#p-wrap-${container.id}`);
+                const colInp = container.querySelector(`#p-col-${container.id}`);
+                const sizeInp = container.querySelector(`#p-size-${container.id}`);
+                
+                // wait for DOM paint to get dimensions
+                setTimeout(() => {
+                    canvas.width = wrap.clientWidth;
+                    canvas.height = wrap.clientHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    let isDrawing = false;
+
+                    const draw = (e) => {
+                        if (!isDrawing) return;
+                        const rect = canvas.getBoundingClientRect();
+                        ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+                        ctx.strokeStyle = colInp.value;
+                        ctx.lineWidth = sizeInp.value;
+                        ctx.lineCap = 'round';
+                        ctx.stroke();
+                    };
+
+                    canvas.addEventListener('pointerdown', (e) => {
+                        isDrawing = true;
+                        const rect = canvas.getBoundingClientRect();
+                        ctx.beginPath();
+                        ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+                        canvas.setPointerCapture(e.pointerId);
+                    });
+
+                    canvas.addEventListener('pointermove', draw);
+
+                    const stop = (e) => {
+                        isDrawing = false;
+                        canvas.releasePointerCapture(e.pointerId);
+                    };
+                    canvas.addEventListener('pointerup', stop);
+                    canvas.addEventListener('pointercancel', stop);
+
+                    container.querySelector(`#p-clear-${container.id}`).onclick = () => {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    };
+                }, 100);
+            },
+
+            snake(container) {
+                let snake = [[10, 10]], food = [15, 15], dir = [1, 0], gameOver = false, score = 0;
+                const gridCount = 20;
+                let intervalId = null;
+
+                const render = () => {
+                    container.innerHTML = `
+                        <div class="w-full h-full bg-slate-900 flex flex-col items-center p-4 relative outline-none" tabindex="0" id="snk-wrap-${container.id}">
+                            <div class="w-full flex justify-between items-center text-white mb-4 px-4 font-bold">
+                                <span class="text-green-400">Snake</span>
+                                <span class="text-yellow-400">Score: <span id="snk-sc-${container.id}">0</span></span>
+                            </div>
+                            <div class="w-full max-w-[320px] aspect-square bg-slate-800 border-4 border-slate-700 rounded-lg relative overflow-hidden shadow-2xl">
+                                <canvas id="snk-canv-${container.id}" class="absolute inset-0 w-full h-full"></canvas>
+                                <div id="snk-go-${container.id}" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20 backdrop-blur-sm hidden">
+                                    <h2 class="text-3xl font-black text-white mb-2 drop-shadow-lg">GAME OVER</h2>
+                                    <p class="text-green-400 font-bold mb-6">Final Score: <span id="snk-fsc-${container.id}">0</span></p>
+                                    <button id="snk-res-${container.id}" class="px-6 py-2 bg-green-500 hover:bg-green-400 text-slate-900 rounded-lg font-black tracking-wider transition-colors active:scale-95">TRY AGAIN</button>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 mt-auto pb-4 w-full max-w-[240px]">
+                                <div></div>
+                                <button id="snk-u-${container.id}" class="bg-slate-800 text-slate-400 p-4 rounded-xl active:bg-slate-700 flex justify-center"><i class="ph-bold ph-caret-up text-2xl"></i></button>
+                                <div></div>
+                                <button id="snk-l-${container.id}" class="bg-slate-800 text-slate-400 p-4 rounded-xl active:bg-slate-700 flex justify-center"><i class="ph-bold ph-caret-left text-2xl"></i></button>
+                                <button id="snk-d-${container.id}" class="bg-slate-800 text-slate-400 p-4 rounded-xl active:bg-slate-700 flex justify-center"><i class="ph-bold ph-caret-down text-2xl"></i></button>
+                                <button id="snk-r-${container.id}" class="bg-slate-800 text-slate-400 p-4 rounded-xl active:bg-slate-700 flex justify-center"><i class="ph-bold ph-caret-right text-2xl"></i></button>
+                            </div>
+                        </div>
+                    `;
+
+                    setTimeout(() => {
+                        const wrap = container.querySelector(`#snk-wrap-${container.id}`);
+                        const canvas = container.querySelector(`#snk-canv-${container.id}`);
+                        canvas.width = 400; canvas.height = 400;
+                        const ctx = canvas.getContext('2d');
+                        const cell = 400 / gridCount;
+
+                        const draw = () => {
+                            ctx.clearRect(0, 0, 400, 400);
+                            // food
+                            ctx.fillStyle = '#ef4444';
+                            ctx.beginPath();
+                            ctx.arc(food[0]*cell + cell/2, food[1]*cell + cell/2, cell/2 - 2, 0, Math.PI*2);
+                            ctx.fill();
+
+                            // snake
+                            snake.forEach((seg, i) => {
+                                ctx.fillStyle = i===0 ? '#4ade80' : '#22c55e';
+                                ctx.fillRect(seg[0]*cell+1, seg[1]*cell+1, cell-2, cell-2);
+                            });
+                        };
+
+                        const loop = () => {
+                            if(gameOver) return;
+                            const head = snake[0];
+                            const newHead = [head[0] + dir[0], head[1] + dir[1]];
+
+                            if (newHead[0]<0 || newHead[0]>=gridCount || newHead[1]<0 || newHead[1]>=gridCount || snake.some(s => s[0]===newHead[0] && s[1]===newHead[1])) {
+                                gameOver = true;
+                                container.querySelector(`#snk-go-${container.id}`).classList.remove('hidden');
+                                container.querySelector(`#snk-fsc-${container.id}`).innerText = score;
+                                return;
+                            }
+
+                            snake.unshift(newHead);
+                            if (newHead[0]===food[0] && newHead[1]===food[1]) {
+                                food = [Math.floor(Math.random()*gridCount), Math.floor(Math.random()*gridCount)];
+                                score += 10;
+                                container.querySelector(`#snk-sc-${container.id}`).innerText = score;
+                            } else {
+                                snake.pop();
+                            }
+                            draw();
+                        };
+
+                        const handleDir = (newDir) => {
+                            if((newDir[0]===0 && dir[1]===newDir[1]) || (newDir[1]===0 && dir[0]===newDir[0]) || (newDir[0]!==0 && dir[0]===-newDir[0]) || (newDir[1]!==0 && dir[1]===-newDir[1])) return;
+                            dir = newDir;
+                        };
+
+                        wrap.focus();
+                        wrap.onkeydown = (e) => {
+                            if(e.key==='ArrowUp') handleDir([0,-1]);
+                            if(e.key==='ArrowDown') handleDir([0,1]);
+                            if(e.key==='ArrowLeft') handleDir([-1,0]);
+                            if(e.key==='ArrowRight') handleDir([1,0]);
+                        };
+
+                        container.querySelector(`#snk-u-${container.id}`).onpointerdown = () => handleDir([0,-1]);
+                        container.querySelector(`#snk-d-${container.id}`).onpointerdown = () => handleDir([0,1]);
+                        container.querySelector(`#snk-l-${container.id}`).onpointerdown = () => handleDir([-1,0]);
+                        container.querySelector(`#snk-r-${container.id}`).onpointerdown = () => handleDir([1,0]);
+
+                        container.querySelector(`#snk-res-${container.id}`).onclick = () => {
+                            snake = [[10,10]]; dir=[1,0]; score=0; gameOver=false;
+                            container.querySelector(`#snk-sc-${container.id}`).innerText = 0;
+                            container.querySelector(`#snk-go-${container.id}`).classList.add('hidden');
+                            draw(); wrap.focus();
+                        };
+
+                        draw();
+                        if(intervalId) clearInterval(intervalId);
+                        intervalId = setInterval(loop, 120);
+                    }, 50);
+                };
+                render();
+            },
+
+            calendar(container) {
+                const d = new Date();
+                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const month = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+                
+                let cells = '';
+                for(let i=0; i<35; i++) {
+                    const active = i===15 ? 'bg-red-500 text-white shadow-md' : 'text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors';
+                    cells += `<div class="aspect-square flex items-center justify-center rounded-full text-sm font-medium ${active}">${((i)%30)+1}</div>`;
+                }
+
+                container.innerHTML = `
+                    <div class="w-full h-full bg-white flex flex-col p-6 overflow-y-auto">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-2xl font-bold text-red-500">${month}</h2>
+                            <div class="flex gap-2 text-slate-400">
+                                <i class="ph-bold ph-caret-left cursor-pointer hover:text-slate-800 transition-colors"></i>
+                                <i class="ph-bold ph-caret-right cursor-pointer hover:text-slate-800 transition-colors"></i>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-7 gap-2 text-center mb-2">
+                            ${days.map(d => `<div class="text-xs font-bold text-slate-400">${d}</div>`).join('')}
+                        </div>
+                        <div class="grid grid-cols-7 gap-2 flex-1 auto-rows-max">${cells}</div>
+                    </div>
+                `;
+            },
+
+            weather(container) {
+                container.innerHTML = `
+                    <div class="w-full h-full bg-gradient-to-b from-blue-400 to-cyan-300 flex flex-col items-center p-8 text-white">
+                        <h2 class="text-2xl font-medium mb-2 drop-shadow-md">New Holland, PA</h2>
+                        <i class="ph-fill ph-cloud-sun text-[80px] mb-4 drop-shadow-lg text-white"></i>
+                        <h1 class="text-6xl font-light mb-2 drop-shadow-md">72&deg;</h1>
+                        <p class="text-xl font-medium drop-shadow-md mb-8">Partly Cloudy</p>
+                        <div class="w-full max-w-sm bg-white/20 backdrop-blur-md rounded-2xl p-4 flex justify-between mt-auto">
+                            <div class="flex flex-col items-center"><span class="text-sm">Tue</span><i class="ph-fill ph-cloud-sun text-2xl my-2"></i><span class="font-bold">70&deg;</span></div>
+                            <div class="flex flex-col items-center"><span class="text-sm">Wed</span><i class="ph-fill ph-cloud-sun text-2xl my-2"></i><span class="font-bold">68&deg;</span></div>
+                            <div class="flex flex-col items-center"><span class="text-sm">Thu</span><i class="ph-fill ph-cloud-sun text-2xl my-2"></i><span class="font-bold">75&deg;</span></div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            music(container) {
+                let playing = false;
+                let progress = 0;
+                let timer = null;
+
+                const render = () => {
+                    container.innerHTML = `
+                        <div class="w-full h-full bg-gradient-to-b from-pink-100 to-rose-50 flex flex-col p-6 items-center">
+                            <div class="w-48 h-48 bg-gradient-to-br from-pink-400 to-rose-500 rounded-3xl shadow-xl mb-8 flex items-center justify-center mt-4">
+                                <i class="ph-fill ph-music-notes text-[64px] text-white drop-shadow-md"></i>
+                            </div>
+                            <h3 class="text-2xl font-bold text-slate-800 mb-1">Chill Vibes Vol. 1</h3>
+                            <p class="text-rose-500 font-medium text-sm mb-8">Zenith Radio</p>
+                            
+                            <div class="w-full px-4 mb-8">
+                                <div class="w-full bg-pink-200 h-2 rounded-full cursor-pointer relative">
+                                    <div class="bg-rose-500 h-full rounded-full transition-all duration-1000" style="width: ${progress}%"></div>
+                                    <div class="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-rose-500 rounded-full shadow-sm" style="left: calc(${progress}% - 8px)"></div>
+                                </div>
+                                <div class="flex justify-between text-xs text-slate-400 mt-2 font-medium">
+                                    <span id="m-time-${container.id}">0:${progress.toString().padStart(2, '0')}</span>
+                                    <span>1:40</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-8 mb-4">
+                                <button class="text-slate-400 hover:text-rose-500 transition-colors active:scale-95"><i class="ph-fill ph-skip-back text-[28px]"></i></button>
+                                <button id="m-play-${container.id}" class="w-16 h-16 bg-rose-500 text-white rounded-full flex items-center justify-center hover:bg-rose-600 shadow-lg active:scale-95 transition-transform">
+                                    ${playing ? '<i class="ph-fill ph-pause text-[28px]"></i>' : '<i class="ph-fill ph-play text-[28px] ml-1"></i>'}
+                                </button>
+                                <button class="text-slate-400 hover:text-rose-500 transition-colors active:scale-95"><i class="ph-fill ph-skip-forward text-[28px]"></i></button>
+                            </div>
+                        </div>
+                    `;
+
+                    container.querySelector(`#m-play-${container.id}`).onclick = () => {
+                        playing = !playing;
+                        if(playing) {
+                            timer = setInterval(() => {
+                                progress = progress >= 100 ? 0 : progress + 1;
+                                render();
+                            }, 1000);
+                        } else {
+                            if(timer) clearInterval(timer);
+                        }
+                        render();
+                    };
+                };
+                render();
+            },
+
+            photos(container) {
+                const pics = [
+                    {url: 'https://images.unsplash.com/photo-1543852786-1cf6624b9987?auto=format&fit=crop&w=800&q=80', title: 'Cat'},
+                    {url: 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=800&q=80', title: 'Dog'},
+                    {url: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?auto=format&fit=crop&w=800&q=80', title: 'Landscape'},
+                    {url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=800&q=80', title: 'Space'},
+                    {url: 'https://images.unsplash.com/photo-1494253109108-2e30c049369b?auto=format&fit=crop&w=800&q=80', title: 'Nature'},
+                    {url: 'https://images.unsplash.com/photo-1506744626753-dba873fd47b4?auto=format&fit=crop&w=800&q=80', title: 'Mountains'}
+                ];
+
+                let selUrl = null;
+
+                const render = () => {
+                    if(selUrl) {
+                        container.innerHTML = `
+                            <div class="w-full h-full bg-black flex flex-col items-center justify-center relative">
+                                <button id="ph-back-${container.id}" class="absolute top-4 left-4 bg-white/20 hover:bg-white/40 text-white px-4 py-2 rounded-lg backdrop-blur-md transition-all z-10 font-medium">&larr; Back</button>
+                                <img src="${selUrl}" class="max-w-full max-h-full object-contain drop-shadow-2xl">
+                            </div>
+                        `;
+                        container.querySelector(`#ph-back-${container.id}`).onclick = () => { selUrl = null; render(); };
+                    } else {
+                        container.innerHTML = `
+                            <div class="w-full h-full bg-white p-4 overflow-y-auto">
+                                <div class="flex justify-between items-center mb-4 sticky top-0 bg-white/90 backdrop-blur-sm z-10 py-2 border-b border-slate-100">
+                                    <h2 class="text-xl font-bold text-slate-800">Gallery</h2>
+                                    <label class="text-sm px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 cursor-pointer transition-colors font-medium flex items-center gap-2 active:scale-95">
+                                        <i class="ph-bold ph-plus"></i> Add Photos
+                                        <input type="file" multiple accept="image/*" class="hidden" id="ph-add-${container.id}">
+                                    </label>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 pb-4" id="ph-grid-${container.id}">
+                                    ${pics.map(p => `
+                                        <div class="aspect-square bg-slate-100 rounded-xl overflow-hidden cursor-pointer shadow-sm hover:shadow-md transition-all hover:scale-[1.02] border border-slate-200/50" data-url="${p.url}">
+                                            <img src="${p.url}" class="w-full h-full object-cover">
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                        
+                        container.querySelectorAll(`#ph-grid-${container.id} > div`).forEach(el => {
+                            el.onclick = () => { selUrl = el.getAttribute('data-url'); render(); };
+                        });
+
+                        container.querySelector(`#ph-add-${container.id}`).onchange = (e) => {
+                            Array.from(e.target.files).forEach(f => {
+                                pics.unshift({url: URL.createObjectURL(f), title: f.name});
+                            });
+                            render();
+                        };
+                    }
+                };
+                render();
+            },
+
+            clock(container) {
+                const render = () => {
+                    const now = new Date();
+                    container.innerHTML = `
+                        <div class="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-white relative overflow-hidden">
+                            <div class="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-600/20 animate-pulse pointer-events-none"></div>
+                            <div class="text-6xl font-light tracking-wider drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] tabular-nums mb-2">
+                                ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </div>
+                            <div class="text-indigo-300 text-lg font-medium tracking-wide uppercase">
+                                ${now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                            </div>
+                        </div>
+                    `;
+                };
+                render();
+                const timer = setInterval(() => {
+                    if(document.getElementById(`content-${container.id.replace('content-','')}`)) render();
+                    else clearInterval(timer);
+                }, 1000);
+            },
+
+            tictactoe(container) {
+                let board = Array(9).fill(null), xIsNext = true;
+
+                const checkWin = () => {
+                    const lines = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]];
+                    for (let [a,b,c] of lines) if (board[a] && board[a]===board[b] && board[a]===board[c]) return board[a];
+                    return null;
+                };
+
+                const render = () => {
+                    const win = checkWin();
+                    const draw = !win && board.every(Boolean);
+                    const status = win ? `Winner: ${win}` : draw ? "It's a Draw!" : `Next: ${xIsNext ? 'X' : 'O'}`;
+
+                    container.innerHTML = `
+                        <div class="w-full h-full bg-teal-50 flex flex-col items-center justify-center p-4">
+                            <div class="text-xl font-bold mb-6 text-teal-800 bg-white px-6 py-2 rounded-full shadow-sm border border-teal-100">${status}</div>
+                            <div class="grid grid-cols-3 gap-2 bg-teal-200 p-2 rounded-xl shadow-inner" id="ttt-grid-${container.id}">
+                                ${board.map((c,i) => `
+                                    <button data-i="${i}" class="w-20 h-20 bg-white rounded-lg shadow-sm text-4xl font-bold flex items-center justify-center hover:bg-teal-50 transition-colors active:scale-95" style="color: ${c==='X'?'#0d9488':'#e11d48'}">${c||''}</button>
+                                `).join('')}
+                            </div>
+                            <button id="ttt-res-${container.id}" class="mt-8 px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium shadow-md transition-all active:scale-95">Restart Game</button>
+                        </div>
+                    `;
+
+                    container.querySelectorAll(`#ttt-grid-${container.id} button`).forEach(b => {
+                        b.onclick = () => {
+                            const i = b.getAttribute('data-i');
+                            if(board[i] || checkWin()) return;
+                            board[i] = xIsNext ? 'X' : 'O';
+                            xIsNext = !xIsNext;
+                            render();
+                        };
+                    });
+
+                    container.querySelector(`#ttt-res-${container.id}`).onclick = () => {
+                        board = Array(9).fill(null); xIsNext = true; render();
+                    };
+                };
+                render();
+            }
+        };
+
+        // --- INIT ---
+        document.getElementById('power-btn').addEventListener('click', () => OS.powerOn());
+
+    </script>
+</body>
+</html>
